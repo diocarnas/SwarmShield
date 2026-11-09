@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monitor de rede</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+
+:root {
+    --bg: #f5f7fa;
+    --panel: #ffffff;
+    --panel-2: #f8fafc;
+    --line: #e5eaf0;
+    --text: #172b4d;
+    --muted: #718096;
+    --teal: #168b78;
+    --danger: #d94848;
+    --amber: #b7791f;
+    --blue: #356ae6;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html { color-scheme: light; }
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 400 14px/1.55 var(--sans);
+}
+.wrap { max-width: 1480px; margin: 0 auto; padding: 30px 32px 48px; }
+
+header {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 16px; margin-bottom: 26px;
+}
+h1 { margin: 0; font-size: 27px; font-weight: 600; letter-spacing: -0.7px; color: #14243b; }
+.sub { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+.sub b { color: #42536b; font-weight: 500; font-family: var(--mono); font-size: 12px; }
+.status {
+    display: inline-flex; align-items: center; gap: 9px;
+    padding: 8px 13px; border: 1px solid var(--line); border-radius: 8px;
+    font-size: 12px; font-weight: 500; color: var(--muted); background: var(--panel);
+    box-shadow: 0 1px 2px rgba(16, 24, 40, .03);
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #a0aec0; }
+.status.on { color: #147d69; border-color: #cce9e2; background: #f2fbf8; }
+.status.on .dot { background: var(--teal); box-shadow: 0 0 0 3px rgba(22,139,120,.12); }
+.status.off { color: #c53030; border-color: #f4d0d0; background: #fff7f7; }
+.status.off .dot { background: var(--danger); }
+.status.idle { color: #986c19; border-color: #f0dfb8; background: #fffbf1; }
+.status.idle .dot { background: #d69e2e; }
+
+.panel {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: 0 2px 8px rgba(20, 36, 59, .035);
+    overflow: hidden;
+}
+.panel-head {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 12px; padding: 18px 20px 0;
+}
+.panel-head h2 { margin: 0; font-size: 14px; font-weight: 600; color: #243750; }
+.panel-head span { color: var(--muted); font-size: 12px; }
+.panel-body { padding: 16px 20px 20px; }
+
+.kpis {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    margin-bottom: 22px; padding: 5px 0;
+}
+.kpi { padding: 17px 20px; border-left: 1px solid var(--line); min-width: 0; }
+.kpi:first-child { border-left: 0; }
+.kpi .label { color: var(--muted); font-size: 12px; font-weight: 500; }
+.kpi .value {
+    font: 500 27px/1.25 var(--mono); letter-spacing: -1px;
+    margin-top: 7px; white-space: nowrap; color: #1d3553;
+}
+.kpi .unit { font-size: 12px; color: var(--muted); margin-left: 5px; letter-spacing: 0; }
+.kpi.alert .value { color: var(--danger); }
+
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 22px; align-items: start; }
+.stack { display: grid; gap: 22px; }
+.chart-box { position: relative; height: 245px; }
+.heatmap-wrap { overflow-x: auto; padding: 4px 0 2px; }
+.heatmap { min-width: 690px; display: grid; grid-template-columns: 42px repeat(24, minmax(18px, 1fr)); gap: 5px; align-items: center; }
+.heatmap .hour, .heatmap .day { color: var(--muted); font-size: 10px; text-align: center; }
+.heatmap .day { text-align: left; font-size: 11px; }
+.heat-cell { height: 22px; min-width: 0; border-radius: 4px; background: #edf2f7; border: 1px solid rgba(20,36,59,.035); }
+.heat-legend { display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin-top: 12px; color: var(--muted); font-size: 10px; }
+.heat-legend span.swatch { width: 13px; height: 10px; border-radius: 3px; display: inline-block; }
+.classification-layout { display: grid; grid-template-columns: 145px 1fr; gap: 18px; align-items: center; }
+.doughnut-box { height: 155px; position: relative; }
+.classification-legend { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.classification-legend li { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #40536b; font-size: 12px; }
+.classification-legend .label { display: inline-flex; align-items: center; gap: 8px; }
+.classification-legend .swatch { width: 9px; height: 9px; border-radius: 3px; }
+.classification-legend strong { font: 500 12px var(--mono); color: #243750; }
+.chart-note { color: var(--muted); font-size: 11px; margin: 10px 0 0; }
+@media (max-width: 560px) { .classification-layout { grid-template-columns: 1fr; } .doughnut-box { height: 175px; } }
+
+.table-scroll { max-height: 420px; overflow: auto; border-top: 1px solid var(--line); margin-top: 16px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 11px 20px; text-align: left; white-space: nowrap; }
+th {
+    position: sticky; top: 0; background: #f8fafc; color: #718096;
+    font-weight: 600; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .04em; border-bottom: 1px solid var(--line);
+}
+td { border-bottom: 1px solid #edf1f5; font-size: 13px; color: #40536b; }
+td.num, th.num { text-align: right; }
+.mono { font-family: var(--mono); font-size: 12px; }
+tbody tr:hover { background: #f8fbff; }
+.ip { cursor: pointer; background: none; border: 0; padding: 0; color: #356ae6; font: inherit; }
+.ip:hover, .ip:focus-visible { color: #214fc0; text-decoration: underline; outline: none; }
+.tag {
+    display: inline-block; padding: 3px 8px; border-radius: 5px;
+    font: 500 11px/1.5 var(--mono); background: #eef4ff;
+}
+.empty { padding: 28px 18px; color: var(--muted); text-align: center; }
+
+.bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
+.bars li { display: grid; grid-template-columns: 1fr auto; gap: 7px 12px; align-items: center; }
+.bars .name { font-size: 13px; color: #40536b; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.bars .count { font: 12px var(--mono); color: var(--muted); }
+.track { grid-column: 1 / -1; height: 6px; background: #edf2f7; border-radius: 99px; overflow: hidden; }
+.fill { height: 100%; border-radius: 99px; background: var(--teal); }
+
+.block { border-color: #f0dada; }
+.block .panel-head h2 { color: #bd3e3e; }
+.hint { margin: 7px 0 16px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+label { display: block; font-size: 12px; font-weight: 500; color: #42536b; margin-bottom: 7px; }
+input[type=text] {
+    width: 100%; padding: 11px 12px; background: #fff; color: var(--text);
+    border: 1px solid #dce3eb; border-radius: 7px; font: 13px var(--mono);
+    transition: border-color .15s, box-shadow .15s;
+}
+input[type=text]::placeholder { color: #a0aec0; }
+input[type=text]:focus-visible { outline: none; border-color: #7da2f5; box-shadow: 0 0 0 3px rgba(53,106,230,.12); }
+button { font-family: var(--sans); cursor: pointer; }
+.btn-danger {
+    width: 100%; margin-top: 12px; padding: 11px 14px; border: 1px solid #c83f3f;
+    border-radius: 7px; background: #d94848; color: #fff; font-weight: 600; font-size: 13px;
+    transition: background .15s, transform .15s;
+}
+.btn-danger:hover { background: #c63e3e; }
+.btn-danger:active { transform: translateY(1px); }
+.btn-danger:disabled { opacity: .6; cursor: wait; }
+.btn-danger:focus-visible, .btn-link:focus-visible { outline: 3px solid rgba(53,106,230,.2); outline-offset: 2px; }
+.msg { margin-top: 12px; padding: 9px 12px; border-radius: 7px; font-size: 12px; }
+.msg:empty { display: none; }
+.msg.ok { background: #edf9f5; color: #147d69; border: 1px solid #d4eee5; }
+.msg.err { background: #fff2f2; color: #c53030; border: 1px solid #f4d5d5; }
+.msg.warn { background: #fffaeb; color: #986c19; border: 1px solid #f3e6c5; }
+
+.blocked { list-style: none; margin: 0; padding: 0; }
+.blocked li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid var(--line); }
+.blocked li:first-child { border-top: 0; padding-top: 0; }
+.blocked .when { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
+.btn-link {
+    background: #fff; border: 1px solid #dce3eb; color: #40536b;
+    border-radius: 6px; padding: 6px 10px; font-size: 11px; font-weight: 500;
+    transition: background .15s, border-color .15s;
+}
+.btn-link:hover { border-color: #b9c6d6; background: #f8fafc; }
+
+.alert-list { list-style: none; margin: 0; padding: 0; }
+.alert-list li {
+    padding: 14px 20px; border-top: 1px solid #edf1f5;
+    display: grid; grid-template-columns: auto 1fr auto; gap: 6px 14px; align-items: center;
+}
+.alert-list li:first-child { border-top: 0; }
+.score { font: 500 19px/1 var(--mono); min-width: 48px; text-align: right; }
+.score.alto { color: var(--danger); }
+.score.medio { color: #b7791f; }
+.score.baixo { color: #718096; }
+.alert-main { min-width: 0; }
+.alert-why { color: var(--muted); font-size: 11px; margin-top: 4px; line-height: 1.5; }
+.alert-acts { display: flex; gap: 6px; }
+.pso-foot {
+    display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
+    padding: 13px 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px;
+    background: #fbfcfe;
+}
+.pso-foot .grow { flex: 1; min-width: 180px; }
+.weights { display: grid; gap: 8px; padding: 0 20px 16px; }
+.weights summary { cursor: pointer; color: var(--muted); font-size: 11px; padding: 13px 0 4px; }
+.weights .row { display: grid; grid-template-columns: 1fr 44px; gap: 4px 10px; font-size: 11px; color: #52647b; }
+.weights .row .track { grid-column: 1 / -1; }
+.weights .row span.v { font-family: var(--mono); color: var(--muted); text-align: right; }
+
+@media (max-width: 1040px) {
+    .grid { grid-template-columns: 1fr; }
+    .kpis { grid-template-columns: repeat(2, 1fr); }
+    .kpi { border-left: 0; border-top: 1px solid var(--line); }
+    .kpi:nth-child(-n+2) { border-top: 0; }
+    .kpi:nth-child(even) { border-left: 1px solid var(--line); }
+}
+@media (max-width: 560px) {
+    .wrap { padding: 18px 14px 30px; }
+    header { flex-direction: column; align-items: flex-start; }
+    h1 { font-size: 23px; }
+    .kpi { padding: 14px 12px; }
+    .kpi .value { font-size: 21px; }
+    .panel-head { padding: 16px 15px 0; }
+    .panel-body { padding: 14px 15px 16px; }
+    th, td { padding: 10px 13px; }
+    .alert-list li { padding: 12px 14px; grid-template-columns: auto 1fr; }
+    .alert-acts { grid-column: 2; }
+    .pso-foot { padding: 12px 14px; }
+}
+
+</style>
+</head>
+<body>
+<div class="wrap">
+    <header>
+        <div>
+            <h1>Monitor de rede</h1>
+            <p class="sub">Interface de captura: <b id="interface">-</b></p>
+        </div>
+        <span class="status" id="status" role="status"><span class="dot"></span><span id="status-text">Conectando</span></span>
+    </header>
+
+    <div id="admin-warn" class="msg warn" role="alert" style="margin:0 0 20px"></div>
+
+    <section class="panel kpis" aria-label="Indicadores">
+        <div class="kpi"><div class="label">Pacotes capturados</div><div class="value" id="k-packets">0</div></div>
+        <div class="kpi"><div class="label">Volume total</div><div class="value" id="k-bytes">0<span class="unit">B</span></div></div>
+        <div class="kpi"><div class="label">Pacotes por segundo</div><div class="value" id="k-pps">0</div></div>
+        <div class="kpi"><div class="label">Vazão atual</div><div class="value" id="k-bps">0<span class="unit">B/s</span></div></div>
+        <div class="kpi alert"><div class="label">IPs bloqueados</div><div class="value" id="k-blocked">0</div></div>
+    </section>
+
+    <section class="panel" style="margin-bottom:20px" aria-label="Alertas priorizados">
+        <div class="panel-head"><h2>Alertas priorizados</h2><span id="alert-sub">origens ordenadas por nota (0 a 100), últimos 60 segundos</span></div>
+        <div style="margin-top:14px"><ul class="alert-list" id="alerts"><li class="empty" style="display:block">Sem dados</li></ul></div>
+        <div class="pso-foot">
+            <span class="grow" id="pso-status">-</span>
+            <button type="button" class="btn-link" id="btn-pso">Otimizar pesos (PSO)</button>
+            <button type="button" class="btn-link" id="btn-pso-reset">Restaurar padrão</button>
+        </div>
+        <div id="pso-msg" class="msg" role="status" style="margin:0 18px 14px"></div>
+        <details class="weights"><summary>Pesos atuais</summary><div id="weights"></div></details>
+    </section>
+
+    <div class="grid">
+        <div class="stack">
+            <section class="panel">
+                <div class="panel-head"><h2>Vazão de tráfego</h2><span>últimos 60 segundos</span></div>
+                <div class="panel-body"><div class="chart-box"><canvas id="chart"></canvas></div></div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-head"><h2>Mapa de calor por horário</h2><span>atividade por dia e hora</span></div>
+                <div class="panel-body">
+                    <div class="heatmap-wrap"><div class="heatmap" id="heatmap" aria-label="Mapa de calor de pacotes por dia da semana e hora"></div></div>
+                    <div class="heat-legend"><span>Menor</span><span class="swatch" style="background:rgba(22,139,120,.10)"></span><span class="swatch" style="background:rgba(22,139,120,.35)"></span><span class="swatch" style="background:rgba(22,139,120,.65)"></span><span class="swatch" style="background:#168b78"></span><span>Maior</span></div>
+                    <p class="chart-note">Contagem acumulada desde que o monitor foi iniciado. Os dados reiniciam ao reiniciar o servidor.</p>
+                </div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-head"><h2>Últimos pacotes</h2><span>clique em um IP para preencher o bloqueio</span></div>
+                <div class="table-scroll">
+                    <table>
+                        <thead>
+                            <tr><th>Horário</th><th>Origem</th><th>Destino</th><th>Protocolo</th><th class="num">Tamanho</th></tr>
+                        </thead>
+                        <tbody id="packets">
+                            <tr><td colspan="5" class="empty">Aguardando pacotes. Se nada aparecer, confira a interface em dash.py.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <div class="stack">
+            <section class="panel">
+                <div class="panel-head"><h2>Protocolos</h2><span>total de pacotes</span></div>
+                <div class="panel-body"><ul class="bars" id="protocols"><li class="empty">Sem dados</li></ul></div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-head"><h2>Origens mais ativas</h2><span>por pacotes</span></div>
+                <div class="panel-body"><ul class="bars" id="sources"><li class="empty">Sem dados</li></ul></div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-head"><h2>Classificação de IPs</h2><span>distribuição atual</span></div>
+                <div class="panel-body">
+                    <div class="classification-layout">
+                        <div class="doughnut-box"><canvas id="classification-chart"></canvas></div>
+                        <ul class="classification-legend" id="classification-legend">
+                            <li><span class="label">Ameaças</span><strong>0</strong></li>
+                            <li><span class="label">Legítimos</span><strong>0</strong></li>
+                            <li><span class="label">Não classificados</span><strong>0</strong></li>
+                        </ul>
+                    </div>
+                    <p class="chart-note">Ameaças incluem IPs bloqueados ou sinalizados pelo analisador. Legítimos são IPs marcados manualmente.</p>
+                </div>
+            </section>
+
+            <section class="panel block">
+                <div class="panel-head"><h2>Bloquear IP</h2></div>
+                <div class="panel-body">
+                    <p class="hint">Cria uma regra de entrada no Firewall do Windows (netsh) para o endereço informado.</p>
+                    <form id="block-form" autocomplete="off">
+                        <label for="ip-alvo">Endereço IP</label>
+                        <input type="text" id="ip-alvo" placeholder="192.168.1.50" inputmode="decimal" spellcheck="false">
+                        <button type="submit" class="btn-danger" id="btn-block">Bloquear IP</button>
+                    </form>
+                    <div id="msg" class="msg" role="status"></div>
+                </div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-head"><h2>Bloquear na rede</h2></div>
+                <div class="panel-body">
+                    <p class="hint">Descobre o MAC do IP digitado em "Bloquear IP". Use o MAC no filtro do roteador.</p>
+                    <button type="button" class="btn-link" id="btn-mac" style="width:100%;padding:9px">Buscar MAC</button>
+                    <div id="mac-result" class="msg" role="status"></div>
+                    <a id="router-link" class="hint" href="#" target="_blank" rel="noopener" style="display:block;margin:12px 0 0">Abrir painel do roteador</a>
+                </div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-head"><h2>IPs bloqueados</h2></div>
+                <div class="panel-body"><ul class="blocked" id="blocked"><li class="empty">Nenhum IP bloqueado.</li></ul></div>
+            </section>
+        </div>
+    </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const hue = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
+
+function fmtBytes(n) {
+    const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let i = 0;
+    while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+    return { v: i === 0 ? String(Math.round(n)) : n.toFixed(n < 10 ? 1 : 0), u: u[i] };
+}
+const fmtNum = n => n.toLocaleString('pt-BR');
+const setKpiBytes = (id, n, suffix = '') => {
+    const f = fmtBytes(n);
+    $(id).innerHTML = `${f.v}<span class="unit">${f.u}${suffix}</span>`;
+};
+const tag = p => {
+    const h = hue(p);
+    return `<span class="tag" style="color:hsl(${h} 75% 72%);background:hsl(${h} 60% 50% / .15)">${esc(p)}</span>`;
+};
+
+/* Gráfico de vazão */
+const chart = new Chart($('chart').getContext('2d'), {
+    type: 'line',
+    data: {
+        labels: Array(60).fill(''),
+        datasets: [{
+            data: Array(60).fill(0),
+            borderColor: '#168b78',
+            backgroundColor: 'rgba(22,139,120,.10)',
+            borderWidth: 2, fill: true, tension: .3, pointRadius: 0
+        }]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        interaction: { intersect: false, mode: 'index' },
+        plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: c => { const f = fmtBytes(c.parsed.y); return `${f.v} ${f.u}/s`; } } }
+        },
+        scales: {
+            x: { display: false },
+            y: {
+                beginAtZero: true,
+                suggestedMax: 2048,
+                grid: { color: '#e8edf3' },
+                border: { display: false },
+                ticks: { color: '#718096', maxTicksLimit: 5, callback: v => { const f = fmtBytes(v); return `${f.v} ${f.u}/s`; } }
+            }
+        }
+    }
+});
+
+const classificationColors = ['#d94848', '#168b78', '#a8b4c3'];
+const classificationChart = new Chart($('classification-chart').getContext('2d'), {
+    type: 'doughnut',
+    data: { labels: ['Ameaças', 'Legítimos', 'Não classificados'], datasets: [{
+        data: [0, 0, 0], backgroundColor: classificationColors,
+        borderColor: '#ffffff', borderWidth: 3, hoverOffset: 4
+    }] },
+    options: { responsive: true, maintainAspectRatio: false, cutout: '70%',
+        plugins: { legend: { display: false }, tooltip: { callbacks: {
+            label: c => `${c.label}: ${fmtNum(c.parsed)} IPs`
+        } } } }
+});
+
+function renderHeatmap(matrix) {
+    const root = $('heatmap');
+    const days = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+    const max = Math.max(1, ...matrix.flat());
+    let html = '<span></span>';
+    for (let hour = 0; hour < 24; hour++) html += `<span class="hour">${hour % 3 === 0 ? String(hour).padStart(2, '0') : ''}</span>`;
+    matrix.forEach((row, day) => {
+        html += `<span class="day">${days[day]}</span>`;
+        row.forEach((count, hour) => {
+            const ratio = count / max;
+            const alpha = count ? (0.10 + ratio * 0.78).toFixed(2) : 0;
+            const bg = count ? `rgba(22,139,120,${alpha})` : '#edf2f7';
+            const color = ratio > .58 ? '#ffffff' : '#42536b';
+            html += `<span class="heat-cell" style="background:${bg};color:${color}" title="${days[day]} às ${String(hour).padStart(2, '0')}h: ${fmtNum(count)} pacotes"></span>`;
+        });
+    });
+    root.innerHTML = html;
+}
+
+function renderClassification(data) {
+    const values = [data.ameacas || 0, data.legitimos || 0, data.nao_classificados || 0];
+    classificationChart.data.datasets[0].data = values;
+    classificationChart.update('none');
+    const names = ['Ameaças', 'Legítimos', 'Não classificados'];
+    $('classification-legend').innerHTML = names.map((name, i) => `
+        <li><span class="label"><span class="swatch" style="background:${classificationColors[i]}"></span>${name}</span>
+        <strong>${fmtNum(values[i])}</strong></li>`).join('');
+}
+
+/* Renderização */
+function render(d) {
+    $('interface').textContent = d.interface;
+    $('router-link').href = d.router_url;
+    $('k-packets').textContent = fmtNum(d.totals.packets);
+    setKpiBytes('k-bytes', d.totals.bytes);
+    $('k-blocked').textContent = d.blocked.length;
+
+    const last = d.series.packets.slice(-3), lastB = d.series.bytes.slice(-3);
+    $('k-pps').textContent = fmtNum(Math.round(last.reduce((a, b) => a + b, 0) / last.length));
+    setKpiBytes('k-bps', lastB.reduce((a, b) => a + b, 0) / lastB.length, '/s');
+
+    chart.data.datasets[0].data = d.series.bytes;
+    chart.update('none');
+    renderHeatmap(d.heatmap || Array.from({ length: 7 }, () => Array(24).fill(0)));
+
+    if (d.packets.length) {
+        $('packets').innerHTML = d.packets.map(p => `
+            <tr>
+                <td class="mono">${esc(p.horario)}</td>
+                <td class="mono"><button class="ip" data-ip="${esc(p.origem)}">${esc(p.origem)}</button></td>
+                <td class="mono"><button class="ip" data-ip="${esc(p.destino)}">${esc(p.destino)}</button></td>
+                <td>${tag(p.protocolo)}</td>
+                <td class="num mono">${fmtNum(p.tamanho)} B</td>
+            </tr>`).join('');
+    }
+
+    bars('protocols', Object.entries(d.protocols), name => tag(name));
+    bars('sources', d.top_sources, name => `<button class="ip mono" data-ip="${esc(name)}">${esc(name)}</button>`);
+
+    $('blocked').innerHTML = d.blocked.length
+        ? d.blocked.map(b => `
+            <li>
+                <div><span class="mono">${esc(b.ip)}</span><span class="when">${esc(b.timestamp)}</span></div>
+                <button class="btn-link" data-unblock="${esc(b.ip)}">Liberar</button>
+            </li>`).join('')
+        : '<li class="empty">Nenhum IP bloqueado.</li>';
+}
+
+function bars(id, entries, label) {
+    const el = $(id);
+    if (!entries.length) { el.innerHTML = '<li class="empty">Sem dados</li>'; return; }
+    const max = Math.max(...entries.map(e => e[1]));
+    el.innerHTML = entries.map(([name, n]) => `
+        <li>
+            <span class="name">${label(name)}</span>
+            <span class="count">${fmtNum(n)}</span>
+            <span class="track"><span class="fill" style="display:block;width:${(n / max * 100).toFixed(1)}%"></span></span>
+        </li>`).join('');
+}
+
+function setStatus(kind, text) {
+    $('status').className = 'status ' + kind;
+    $('status-text').textContent = text;
+}
+
+function updateStatus(d) {
+    const c = d.capture;
+    const warn = $('admin-warn');
+    if (!d.admin) { warn.textContent = 'O servidor não está como Administrador. A captura e o bloqueio de IPs não vão funcionar. Reinicie o terminal com "Executar como administrador".'; warn.className = 'msg warn'; }
+    else if (c.error) { warn.textContent = 'Erro na captura: ' + c.error; warn.className = 'msg err'; }
+    else { warn.textContent = ''; }
+    if (c.error) setStatus('off', 'Erro na captura');
+    else if (c.idle === null) setStatus('idle', 'Aguardando primeiro pacote');
+    else if (c.idle > 10) setStatus('idle', 'Sem pacotes há ' + Math.round(c.idle) + ' s');
+    else setStatus('on', 'Capturando');
+    $('status').title = c.error || '';
+}
+
+/* Alertas priorizados (consulta própria, a cada 5 s) */
+const NIVEL = { alto: 'alta', medio: 'média', baixo: 'baixa' };
+function renderAlerts(d) {
+    renderClassification(d.classificacao || { ameacas: 0, legitimos: 0, nao_classificados: 0 });
+    const ul = $('alerts');
+    if (d.aquecendo > 0) {
+        ul.innerHTML = `<li class="empty" style="display:block">Aprendendo o tráfego normal. Alertas em ${d.aquecendo} s.</li>`;
+    } else if (!d.alerts.length) {
+        ul.innerHTML = '<li class="empty" style="display:block">Nenhuma origem suspeita no momento.</li>';
+    } else {
+        ul.innerHTML = d.alerts.map(a => `
+            <li>
+                <span class="score ${a.nivel}" title="Prioridade ${NIVEL[a.nivel]}">${a.nota.toFixed(0)}</span>
+                <div class="alert-main">
+                    <button class="ip mono" data-ip="${esc(a.ip)}">${esc(a.ip)}</button>
+                    <div class="alert-why">${esc(a.motivos.join(', ') || 'Vários sinais fracos')} · ${fmtNum(a.pacotes)} pacotes · ${a.protocolos.map(esc).join(', ')}</div>
+                </div>
+                <div class="alert-acts">
+                    <button class="btn-link" data-ip="${esc(a.ip)}">Bloquear</button>
+                    <button class="btn-link" data-legit="${esc(a.ip)}">Legítimo</button>
+                </div>
+            </li>`).join('');
+    }
+    const r = d.retorno, i = d.info;
+    $('pso-status').textContent = (i
+        ? `Pesos otimizados em ${i.quando}: AUC ${i.auc_antes.toFixed(2)} para ${i.auc_depois.toFixed(2)} (${i.amostras} exemplos). `
+        : 'Pesos padrão. ') + `Exemplos: ${r.ameacas} bloqueados, ${r.legitimos} legítimos.`;
+    $('weights').innerHTML = Object.entries(d.pesos).map(([k, w]) => `
+        <div class="row"><span>${esc(d.rotulos[k])}</span><span class="v">${(w * 100).toFixed(0)}%</span>
+        <span class="track"><span class="fill" style="display:block;width:${Math.min(100, w * 100 * 2.5).toFixed(1)}%"></span></span></div>`).join('');
+}
+async function loadAlerts() {
+    try {
+        const r = await fetch('/api/alerts', { cache: 'no-store' });
+        if (r.ok) renderAlerts(await r.json());
+    } catch (e) { /* o status principal já avisa quando o servidor some */ }
+}
+async function tickAlerts() {
+    if (!document.hidden) await loadAlerts();
+    setTimeout(tickAlerts, 5000);
+}
+tickAlerts();
+
+function psoMsg(text, kind) { const m = $('pso-msg'); m.textContent = text; m.className = 'msg ' + kind; }
+async function psoAction(url, btn) {
+    btn.disabled = true;
+    try {
+        const res = await post(url, '');
+        psoMsg(res.message, res.status === 'success' ? 'ok' : 'err');
+        if (res.status === 'success') loadAlerts();
+    } catch { psoMsg('Não foi possível falar com o servidor.', 'err'); }
+    btn.disabled = false;
+}
+$('btn-pso').addEventListener('click', e => psoAction('/api/pso/otimizar', e.currentTarget));
+$('btn-pso-reset').addEventListener('click', e => psoAction('/api/pso/resetar', e.currentTarget));
+
+/* Polling: um pedido por vez, pausado com a aba oculta */
+async function tick() {
+    if (!document.hidden) {
+        try {
+            const r = await fetch('/api/stats', { cache: 'no-store' });
+            if (!r.ok) throw new Error(r.status);
+            const d = await r.json();
+            render(d);
+            updateStatus(d);
+        } catch (e) {
+            setStatus('off', 'Sem resposta do servidor');
+        }
+    }
+    setTimeout(tick, 2000);
+}
+tick();
+
+/* Bloqueio e liberação */
+function showMsg(text, kind) {
+    const m = $('msg');
+    m.textContent = text;
+    m.className = 'msg ' + kind;
+}
+
+async function post(url, ip) {
+    const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip })
+    });
+    return r.json();
+}
+
+$('block-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const input = $('ip-alvo'), btn = $('btn-block');
+    const ip = input.value.trim();
+    if (!ip) { showMsg('Digite um endereço IP.', 'warn'); return; }
+
+    btn.disabled = true;
+    try {
+        const res = await post('/api/block', ip);
+        showMsg(res.message, res.status === 'success' ? 'ok' : 'err');
+        if (res.status === 'success') input.value = '';
+    } catch {
+        showMsg('Não foi possível falar com o servidor.', 'err');
+    }
+    btn.disabled = false;
+});
+
+
+$('btn-mac').addEventListener('click', async () => {
+    const ip = $('ip-alvo').value.trim(), box = $('mac-result'), btn = $('btn-mac');
+    if (!ip) { box.textContent = 'Digite um IP no campo acima.'; box.className = 'msg warn'; return; }
+    btn.disabled = true;
+    try {
+        const res = await post('/api/mac', ip);
+        if (res.status === 'success') {
+            box.innerHTML = `MAC <span class="mono">${esc(res.mac)}</span> <button type="button" class="btn-link" data-copy="${esc(res.mac)}">Copiar</button>`;
+            box.className = 'msg ok';
+        } else {
+            box.textContent = res.message; box.className = 'msg err';
+        }
+    } catch {
+        box.textContent = 'Não foi possível falar com o servidor.'; box.className = 'msg err';
+    }
+    btn.disabled = false;
+});
+
+document.addEventListener('click', async e => {
+    const cp = e.target.closest('[data-copy]');
+    if (cp) { navigator.clipboard.writeText(cp.dataset.copy); cp.textContent = 'Copiado'; return; }
+    const ipBtn = e.target.closest('[data-ip]');
+    if (ipBtn) { $('ip-alvo').value = ipBtn.dataset.ip; $('ip-alvo').focus(); return; }
+
+    const lg = e.target.closest('[data-legit]');
+    if (lg) {
+        lg.disabled = true;
+        try { await post('/api/alerts/legitimo', lg.dataset.legit); } catch {}
+        loadAlerts();
+        return;
+    }
+
+    const un = e.target.closest('[data-unblock]');
+    if (un) {
+        un.disabled = true;
+        try {
+            const res = await post('/api/unblock', un.dataset.unblock);
+            showMsg(res.message, res.status === 'success' ? 'ok' : 'err');
+        } catch {
+            showMsg('Não foi possível falar com o servidor.', 'err');
+        }
+        un.disabled = false;
+    }
+});
+</script>
+</body>
+</html>

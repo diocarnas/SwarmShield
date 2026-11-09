@@ -1,0 +1,22 @@
+# Variáveis de ambiente
+.env
+.env.*
+
+!.env.example
+
+# Banco de dados
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Sistema
+.DS_Store
+Thumbs.db
